@@ -1,0 +1,29 @@
+name:	       stencil
+version:       0.1.0.0
+synopsis:      String templating library
+category:      Text
+homepage:      https://github.com/isturdy/stencil
+license:       PublicDomain
+license-file:  UNLICENSE
+author:        Ian Sturdy <sturdyi12@mail.wlu.edu>
+maintainer:    Ian Sturdy <sturdyi12@mail.wlu.edu>
+stability:     experimental
+tested-with:
+	       GHC == 7.6.2
+cabal-version: >=1.8
+build-type:    Simple
+
+library
+  exposed-modules:
+    Text.Stencil
+  GHC-Options:
+    -Wall
+
+  build-depends:
+    base ==4.6.*,
+    containers ,
+    text ==0.11.2.*
+
+source-repository head
+  type:     git
+  location: https://github.com/isturdy/stencil
