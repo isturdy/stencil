@@ -17,8 +17,6 @@ In all contexts, Stencil reserves doubled and tripled angle brackets ('<<') and 
 Substitutions
 -------------
 
-Parts of substitutions contained in brackets ('[]') are optional.
-
     <<name>>
 
 Substitute the value of *name* (which should be text or a Haskell value with a defined conversion to text) from the present context. In all substitutions, tripling the surrounding brackets (`<<<name>>>}`) results in the contained text being HTML escaped.
@@ -31,7 +29,7 @@ If *name* refers to an empty list or string, substitute *text1*; otherwise subst
 
 Evaluate *text* in the context of the dictionary referred to by *name*. Within *text*, any lookups not found in that dictionary are passed to the next higher context.
 
-    <<@name| text [| alternate text ]>>
+    <<@name| text | alternate text >>
 
 Substitute *text* for each item of the list referred to by *name*. If *name* is a list of texts, they can be accessed with '<<>>' within *text*, so that `<ul><<@listname |<li><<>></li>></ul>` becomes `<ul><li>item1</li><li>item2</li></ul>`. If the list is empty, substitute the alternate text if present. if *name* refers to a list of dictionaries, each evaluation of *text* is in the context of the corresponding dictionary.
 
