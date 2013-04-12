@@ -128,16 +128,23 @@ data Element = ElText Text
 notSpecialChar :: Char -> Bool
 notSpecialChar '<' = False
 notSpecialChar '|' = False
-notSpecialChar '>' = False
+notSpecialChar ')' = False
 notSpecialChar _   = True
+
+testChar :: (Char -> Bool) -> Parser ()
+testChar f = do mc <- peekChar
+                case mc of
+                  Nothing -> return ()
+                  Just c  -> if' (f c) (return ()) (fail "")
 
 notSpecial :: Parser Text
 notSpecial = T.concat <$> many1'
              (takeWhile1 notSpecialChar
              <|> "||" .*> takeWhile1 (== '|')
-             <|> "<<<" .*> takeWhile1 (== '<')
-             <|> "<<<" .*> takeWhile1 (== '<')
-             <|> ">>>" .*> takeWhile1 (== '>'))
+             <|> T.snoc <$> ("<<" .*> takeWhile1 (== '<')) <*> char '('
+             <|> T.cons <$> char ')' <*> (">>" .*> takeWhile1 (== '>'))
+             <|> T.append <$> string "))" <*> (">>" .*> takeWhile1 (== '>'))
+             <|> T.singleton <$> (char ')' <* testChar (notInClass ")>")))
 
 -- Parser
 parseTemp :: Text -> Either Text Block
@@ -158,19 +165,15 @@ block :: Parser Block
 block = Block <$> many' element
 
 name :: Parser Name
-name = do
-  first <- peekChar
-  if' (fmap (inClass "?%@$!&") first) == Just True
-    (fail "Bad arity") (return ())
-  notSpecial <|> return ""
+name = (testChar (notInClass "?%@$!&") *> notSpecial) <|> return ""
 
 pipeBlock :: Parser Block
 pipeBlock = char '|' *> block
 
 tag :: Parser Element
-tag = string "<<" >> do
-  esc <- option Escaped (const NotEscaped <$> char '<')
-  let close = if' (esc == Escaped) ">>" ">>>"
+tag = string "<<(" >> do
+  esc <- option Escaped (const NotEscaped <$> char '(')
+  let close = if' (esc == Escaped) ")>>" "))>>"
   ElIf esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
     <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
