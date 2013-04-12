@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE UndecidableInstances #-}
 module Text.Stencil where
 
@@ -125,14 +124,14 @@ pipeBlock = char '|' *> block
 tag :: Parser Element
 tag = string "<<" >> do
   esc <- option Escaped (const NotEscaped <$> char '<')
-  let close = if esc == Escaped then ">>" else ">>>"
-  (ElIf   esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
-   <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
-   <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
-   <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
-   <|> ElFun  esc <$> (char '!' *> name) <*> pipeBlock <* close
-   <|> ElTemp esc <$> (char '&' *> name) <* close
-   <|> ElSubs esc <$> name <* close)
+  let close = if' (esc == Escaped) ">>" ">>>"
+  ElIf   esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
+    <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
+    <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
+    <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
+    <|> ElFun  esc <$> (char '!' *> name) <*> pipeBlock <* close
+    <|> ElTemp esc <$> (char '&' *> name) <* close
+    <|> ElSubs esc <$> name <* close
 
 -- | Renderer
 
