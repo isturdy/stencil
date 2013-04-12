@@ -194,10 +194,10 @@ warn :: Text -> Writer Warnings Text
 warn t = tell [t] >> return ""
 
 warnNotFound :: Name -> Writer Warnings Text
-warnNotFound n = warn ("name '" <> n <> "'not in dictionary.")
+warnNotFound n = warn ("name '" <> n <> "' not in dictionary.")
 
 warnWrongType :: Name -> Text ->  Writer Warnings Text
-warnWrongType n t = warn ("'" <> n <> "'refers to a value of the wrong type."
+warnWrongType n t = warn ("'" <> n <> "' refers to a value of the wrong type."
                         <> " Expecting " <> t <> ".")
 
 subsBlock :: Templates -> Context -> Block -> Writer Warnings Text
@@ -261,7 +261,7 @@ substitute _ c (ElVFun e fn vn) = liftM (escapeHtml e) $
     _                -> warnWrongType fn"Haskell function"
 substitute ts c (ElTemp e n) = liftM (escapeHtml e) $
   case Map.lookup n ts of
-    Nothing -> warn $ "Template " <> n <> " not found."
+    Nothing -> warn $ "Template '" <> n <> "' not found."
     Just t  -> case evalTemplate ts c t of
       Left err        -> warn err
       Right (txt, ws) -> mapM_ warn ws >> return txt

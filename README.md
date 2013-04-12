@@ -14,6 +14,8 @@ Reserved characters and escaping
 
 In all contexts, Stencil reserves doubled and tripled angle brackets ('<<') and pipes ('|'). If at least two consecutive angle brackets are needed within the text, add two; '<<<<' becomes '<<', '<<<<<' '<<<', and so on. Pipes also are escaped by adding two additional pipes.
 
+For disambiguation, variable names may not begin with '?', '%', '@', '!', '$', '&', fewer than three pipes, or fewer than four closing angle brackets.
+
 Substitutions
 -------------
 
@@ -23,7 +25,7 @@ Substitute the value of *name* (which should be text or a Haskell value with a d
 
     <<?name| text1 | text2 >>
 
-If *name* refers to an empty list or string, substitute *text1*; otherwise substitute *text2*.
+If *name* is in the dictionary, substitute *text1*; otherwise substitute *text2*.
 
     <<%name| text >>
 
