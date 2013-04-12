@@ -182,8 +182,8 @@ substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
     _                  -> warnWrongType n "text"
 substitute t c (ElIf e n bt bf) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> subsBlock t c bf
-    _                  -> subsBlock t c bt
+    Nothing            -> subsBlock t c bt
+    _                  -> subsBlock t c bf
 substitute t c (ElDict e n b) = liftM (escapeHtml e) $
   case lookupInContext c n of
     Nothing            -> warnNotFound n
