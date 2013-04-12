@@ -2,7 +2,19 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
-module Text.Stencil where
+module Text.Stencil (
+         evalTemplate
+       , Value()
+       , ToValue( toValue )
+       , hValue
+       , hValueWithDefault
+       , Dictionary
+       , ToDict( toDict )
+       , Context
+       , Template
+       , Templates
+       , Warnings
+       ) where
 
 import           Control.Applicative
 import           Control.Monad
@@ -18,8 +30,10 @@ if' :: Bool -> a -> a -> a
 if' True  a _ = a
 if' False _ b = b
 
+-- | Maps from Text keys to 'Value'
 newtype Dictionary = Dictionary (Map.Map Name Value)
 
+-- | Values used for substitutions.
 data Value = Txt Text
            | TxtFunc (Text -> Text)
            | ValFunc (Dynamic -> Either Text Text)
@@ -29,40 +43,59 @@ data Value = Txt Text
            | HVal Dynamic
            | HValDef Text Dynamic
 
--- |Class of associative datastructures that can become dictionaries
+-- | Class of associative datastructures that can become dictionaries.
 class ToDict a where
   toDict :: a -> Dictionary
+
+instance ToDict (Map.Map Text Value) where
+  toDict = Dictionary
+instance ToDict [(Text, Value)] where
+  toDict = Dictionary . Map.fromList
 
 -- |Class of things that can be made into a Value.
 class ToValue a where
   toValue :: a -> Value
 
+-- | Used in substitutions (@\<\<name\>\>@).
 instance ToValue Text where
   toValue = Txt
+-- | Used in context substitutions (@\<\<%name|text\>\>@).
 instance ToValue Dictionary where
   toValue = Dict
+-- | Shortcut for @toValue . toDict@.
+instance ToValue (Map.Map Text Value) where
+  toValue = Dict . toDict
+-- | Shortcut for @toValue . toDict@.
+instance ToValue [(Text, Value)] where
+  toValue = Dict . toDict
+-- | Lists of dictionaries; used in list substitutions.
+-- (@\<\<\@name|text|alternate\>\>@)
 instance ToDict a => ToValue [a] where
   toValue = DictList . fmap toDict
+-- | Lists of text; used in list substitutions.
 instance ToValue [Text] where
   toValue = List
-
--- |Arbitrary values. Not an instance due to overlapping; use these to
--- write instances for specific types as needed.
-hValueWithDefault :: Typeable a => Text -> a -> Value
-hValueWithDefault t v = HValDef t (toDyn v)
-
-hValue :: Typeable a => a -> Value
-hValue = HVal . toDyn
-
+-- | Shortcut for @toValue . pack . show@.
+instance Show a => ToValue a where
+  toValue = Txt . pack . show
+-- | Used in text function application (@\<\<$function|text\>\>@).
 instance ToValue (Text -> Text) where
   toValue = TxtFunc
-
+-- | Used in haskell function application (@\<\<!function|value\>\>@).
 instance Typeable a => ToValue (a -> Text) where
   toValue f = ValFunc (maybe (Left "Wrong type.") (Right . f) . fromDynamic)
 
--- |The catch-nearly-all
-instance Show a => ToValue a where
-  toValue = Txt . pack . show
+
+-- | Arbitrary haskell values. Not an instance of 'ToValue' to prevent
+-- ambiguous instances. This can only be used as an argument to a haskell
+-- function block (@\<\<!function|value\>\>@).
+hValue :: Typeable a => a -> Value
+hValue = HVal . toDyn
+
+-- | Arbitrary value with a default textual representation; can be used
+-- in substitution, list, and both types of function blocks.
+hValueWithDefault :: Typeable a => Text -> a -> Value
+hValueWithDefault t v = HValDef t (toDyn v)
 
 -- |Syntax tree
 newtype Block = Block [Element]
@@ -168,6 +201,7 @@ subsBlockWithDef t txt c = subsBlock t (singletonDict:c)
   where singletonDict = Dictionary $ Map.fromList [("", Txt txt)]
 
 type Template = Text
+-- | Maps of templates; used for include blocks (@\<\<&template\>\>@).
 type Templates = Map.Map Text Template
 
 substitute :: Templates -> Context -> Element -> Writer Warnings Text
@@ -220,7 +254,10 @@ substitute ts c (ElTemp e n) = liftM (escapeHtml e) $
       Left err        -> warn err
       Right (txt, ws) -> mapM_ warn ws >> return txt
 
-
+-- | Evaluates templates. Returns @'Left' 'Text'@ if it cannot parse the
+-- template, and @'Right' ('Text', 'Warnings')@ if it can. If it encounters
+-- non-fatal template errors (such as invalid names or wrong types) it will
+-- do the best it can and include descriptions of the problems.
 evalTemplate :: Templates -> Context -> Template ->
                 Either Text (Text, Warnings)
 evalTemplate ts c t = case parseTemp t of
