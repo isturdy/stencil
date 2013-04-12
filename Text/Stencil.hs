@@ -62,6 +62,8 @@ class ToValue a where
 -- | Used in substitutions (@\<\<name\>\>@).
 instance ToValue Text where
   toValue = Txt
+instance ToValue String where
+  toValue = Txt . pack
 -- | Used in context substitutions (@\<\<%name|text\>\>@).
 instance ToValue Dictionary where
   toValue = Dict
@@ -88,6 +90,9 @@ instance ToValue (Text -> Text) where
 instance Typeable a => ToValue (a -> Text) where
   toValue f = ValFunc (maybe (Left "Wrong type.") (Right . f) . fromDynamic)
 
+-- | A convenience function for use with OverloadedStrings
+textValue :: Text -> Value
+textValue = Txt
 
 -- | Arbitrary haskell values. Not an instance of 'ToValue' to prevent
 -- ambiguous instances. This can only be used as an argument to a haskell
