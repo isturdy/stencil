@@ -7,6 +7,7 @@ module Text.Stencil (
          evalTemplate
        , Value()
        , ToValue( toValue )
+       , textValue
        , hValue
        , hValueWithDefault
        , Dictionary
@@ -26,6 +27,7 @@ import qualified Data.Map                     as Map
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import           Prelude                      hiding (concatMap)
+import           Text.XHtmlCombinators.Escape (escape)
 
 if' :: Bool -> a -> a -> a
 if' True  a _ = a
@@ -169,7 +171,7 @@ tag = string "<<" >> do
 
 -- Renderer
 escapeHtml :: PreEscaped -> Text -> Text
-escapeHtml e = if' (e == NotEscaped) undefined id
+escapeHtml e = if' (e == NotEscaped) escape id
 
 type Context = [Dictionary]
 lookupInContext :: Context -> Name -> Maybe Value
