@@ -2,6 +2,7 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
+
 module Text.Stencil (
          evalTemplate
        , Value()
@@ -21,10 +22,10 @@ import           Control.Monad
 import           Control.Monad.Writer
 import           Data.Attoparsec.Text
 import           Data.Dynamic
-import qualified Data.Map             as Map
-import           Data.Text            (Text, pack)
-import qualified Data.Text            as T
-import           Prelude              hiding (concatMap)
+import qualified Data.Map                     as Map
+import           Data.Text                    (Text, pack)
+import qualified Data.Text                    as T
+import           Prelude                      hiding (concatMap)
 
 if' :: Bool -> a -> a -> a
 if' True  a _ = a
@@ -97,7 +98,7 @@ hValue = HVal . toDyn
 hValueWithDefault :: Typeable a => Text -> a -> Value
 hValueWithDefault t v = HValDef t (toDyn v)
 
--- |Syntax tree
+-- Syntax tree
 newtype Block = Block [Element]
                 deriving (Show)
 
@@ -131,7 +132,7 @@ notSpecial = T.concat <$> many1'
              <|> "<<<" .*> takeWhile1 (== '<')
              <|> ">>>" .*> takeWhile1 (== '>'))
 
--- | Parser
+-- Parser
 parseTemp :: Text -> Either Text Block
 parseTemp t = case p t of
   Done _ r   -> Right r
@@ -158,7 +159,7 @@ tag :: Parser Element
 tag = string "<<" >> do
   esc <- option Escaped (const NotEscaped <$> char '<')
   let close = if' (esc == Escaped) ">>" ">>>"
-  ElIf   esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
+  ElIf esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
     <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
@@ -166,8 +167,7 @@ tag = string "<<" >> do
     <|> ElTemp esc <$> (char '&' *> name) <* close
     <|> ElSubs esc <$> name <* close
 
--- | Renderer
-
+-- Renderer
 escapeHtml :: PreEscaped -> Text -> Text
 escapeHtml e = if' (e == NotEscaped) undefined id
 
