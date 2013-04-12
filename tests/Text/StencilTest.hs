@@ -19,91 +19,100 @@ stencilTests = testGroup "Text/Stencil" [
 
 parserTests = testGroup "parser" [
 
-    testCase "delimiter mismatch" $
-    isParseError " <<<>>"
+    testCase "delimiter mismatch ('<')" $
+    isParseError " <<<()>>"
 
-  , testCase "delimiter mismatch 2" $
-    isParseError " <<>>>"
+  , testCase "delimiter mismatch ('>')" $
+    isParseError " <<()>>>"
+
+  , testCase "delimiter mismatch (')')" $
+    isParseError " <<(()>>)"
+
+  , testCase "delimiter mismatch (')')" $
+    isParseError " <<())>>)"
 
   , testCase "incorrect arity" $
-    isParseError " <<?name>>"
+    isParseError " <<(?name)>>"
 
   , testCase "incorrect arity 2" $
-    isParseError " <<?name|text>>"
+    isParseError " <<(?name|text)>>"
+
+  , testCase "Escaping" $
+    testTemp " ||| <<<( )>>> <<<<(( ))>>>>" " | <( )> <<(( ))>>"
 
   ]
 
 valueTests = testGroup "value conversion" [
 
     testCase "Text" $
-    testTemp " <<text>> " " textvalue "
+    testTemp " <<(text)>> " " textvalue "
 
   , testCase "String" $
-    testTemp " <<string>> " " stringvalue "
+    testTemp " <<(string)>> " " stringvalue "
 
   , testCase "Dictionary" $
-    testTemp " <<%dict|<<dictsub>> >> " " dictsubvalue  "
+    testTemp " <<(%dict|<<(dictsub)>>)>> " " dictsubvalue "
 
   , testCase "Map" $
-    testTemp " <<%map|<<dictsub>> >> " " dictsubvalue  "
+    testTemp " <<(%map|<<(dictsub)>>)>> " " dictsubvalue "
 
   , testCase "Association list" $
-    testTemp " <<%alist|<<dictsub>> >> " " dictsubvalue  "
+    testTemp " <<(%alist|<<(dictsub)>>)>> " " dictsubvalue "
 
   , testCase "Dictionary list" $
-    testTemp " <<@dlist|(<<dictsub>>)|>> " " (dictsubvalue1)(dictsubvalue2) "
+    testTemp "<<(@dlist|(<<(dictsub)>>)|)>>" "(dictsubvalue1)(dictsubvalue2)"
 
   , testCase "Text list" $
-    testTemp " <<@tlist|(<<>>)|>> " " (textsubvalue1)(textsubvalue2) "
+    testTemp " <<(@tlist|(<<()>>)|)>> " " (textsubvalue1)(textsubvalue2) "
 
   , testCase "Haskell value (default)" $
-    testTemp " <<hvaldef>> " " (def 1) "
+    testTemp " <<(hvaldef)>> " " (def 1) "
 
   , testCase "Haskell value (no default)" $
-    testTempWarn " <<hval>> " "  "
+    testTempWarn " <<(hval)>> " "  "
     "'hval' refers to a value of the wrong type. Expecting text."
 
   , testCase "Haskell function" $
-    testTemp " <<$hfun|hval>> " " 2 "
+    testTemp " <<($hfun|hval)>> " " 2 "
 
   , testCase "Text function" $
-    testTemp " <<!tfun|arst>> " " ARST "
+    testTemp " <<(!tfun|arst)>> " " ARST "
 
   , testCase "Showable function" $
-    testTemp " <<showable>> " " 2 "
+    testTemp " <<(showable)>> " " 2 "
 
   ]
 
 outputTests = testGroup "output" [
 
     testCase "substitution (undefined)" $
-    testTempWarn  " (<<undef>>) " " () " "name 'undef' not in dictionary."
+    testTempWarn  " (<<(undef)>>) " " () " "name 'undef' not in dictionary."
 
   , testCase "if (defined)" $
-    testTemp " <<?text|primary|alternate>> " " primary "
+    testTemp " <<(?text|primary|alternate)>> " " primary "
 
   , testCase "if (undefined)" $
-    testTemp " <<?undef|primary|alternate>> " " alternate "
+    testTemp " <<(?undef|primary|alternate)>> " " alternate "
 
   , testCase "list (undefined)" $
-    testTempWarn " (<<@undef||>>) " " () " "name 'undef' not in dictionary."
+    testTempWarn " (<<(@undef||)>>) " " () " "name 'undef' not in dictionary."
 
   , testCase "list (empty)" $
-    testTemp " <<@nillist|primary|alternate>> " " alternate "
+    testTemp " <<(@nillist|primary|alternate)>> " " alternate "
 
   , testCase "template (undefined)" $
-    testTempWarn " (<<&undef>>) " " () " "Template 'undef' not found."
+    testTempWarn " (<<(&undef)>>) " " () " "Template 'undef' not found."
 
   , testCase "template (defined)" $
-    testTemp " (<<&temp>>) " " ( textvalue ) "
+    testTemp " (<<(&temp)>>) " " ( textvalue ) "
 
   , testCase "HTML escaping" $
-    testTemp " <<<html>>> " " &lt;&gt; "
+    testTemp " <<((html))>> " " &lt;&gt; "
 
   ]
 
 defTemplates :: Templates
-defTemplates = Map.fromList [("temp", " <<text>> ")]
+defTemplates = Map.fromList [("temp", " <<(text)>> ")]
 
 defContext :: Context
 defContext = return . toDict $ [
