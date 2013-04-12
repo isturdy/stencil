@@ -73,8 +73,8 @@ instance ToValue [(Text, Value)] where
   toValue = Dict . toDict
 -- | Lists of dictionaries; used in list substitutions.
 -- (@\<\<\@name|text|alternate\>\>@)
-instance ToDict a => ToValue [a] where
-  toValue = DictList . fmap toDict
+instance ToValue [Dictionary] where
+  toValue = DictList
 -- | Lists of text; used in list substitutions.
 instance ToValue [Text] where
   toValue = List
@@ -137,7 +137,8 @@ notSpecial = T.concat <$> many1'
 -- Parser
 parseTemp :: Text -> Either Text Block
 parseTemp t = case p t of
-  Done _ r   -> Right r
+  Done "" r  -> Right r
+  Done tx _  -> Left $ "Parse error at " <> tx
   Fail _ _ e -> Left $ pack e
   Partial _  -> error "This is impossible (parser failed to complete."
   where p txt = case parse (Block <$> many' element) txt of
@@ -152,7 +153,11 @@ block :: Parser Block
 block = Block <$> many' element
 
 name :: Parser Name
-name = notSpecial <|> return ""
+name = do
+  first <- peekChar
+  if' (fmap (inClass "?%@$!&") first) == Just True
+    (fail "Bad arity") (return ())
+  notSpecial <|> return ""
 
 pipeBlock :: Parser Block
 pipeBlock = char '|' *> block
@@ -199,7 +204,7 @@ subsBlockWithDict t d c = subsBlock t (d:c)
 
 subsBlockWithDef :: Templates -> Text -> Context -> Block ->
                     Writer Warnings Text
-subsBlockWithDef t txt c = subsBlock t (singletonDict:c)
+subsBlockWithDef t txt = subsBlockWithDict t singletonDict
   where singletonDict = Dictionary $ Map.fromList [("", Txt txt)]
 
 type Template = Text
@@ -216,8 +221,8 @@ substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
     _                  -> warnWrongType n "text"
 substitute t c (ElIf e n bt bf) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> subsBlock t c bt
-    _                  -> subsBlock t c bf
+    Nothing            -> subsBlock t c bf
+    _                  -> subsBlock t c bt
 substitute t c (ElDict e n b) = liftM (escapeHtml e) $
   case lookupInContext c n of
     Nothing            -> warnNotFound n
