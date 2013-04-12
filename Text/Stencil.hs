@@ -18,7 +18,7 @@ if' :: Bool -> a -> a -> a
 if' True  a _ = a
 if' False _ b = b
 
-type Dictionary = Map.Map Name Value
+newtype Dictionary = Dictionary (Map.Map Name Value)
 
 data Value = Txt Text
            | TxtFunc (Text -> Text)
@@ -141,10 +141,8 @@ escapeHtml e = if' (e == NotEscaped) undefined id
 type Context = [Dictionary]
 lookupInContext :: Context -> Name -> Maybe Value
 lookupInContext [] _ = Nothing
-lookupInContext (d:ds) n = Map.lookup n d `mplus` lookupInContext ds n
-
-pushContext :: Dictionary -> Context -> Context
-pushContext = (:)
+lookupInContext (Dictionary d:ds) n =
+  Map.lookup n d `mplus` lookupInContext ds n
 
 type Warnings = [Text]
 warn :: Text -> Writer Warnings Text
@@ -166,7 +164,8 @@ subsBlockWithDict t d c = subsBlock t (d:c)
 
 subsBlockWithDef :: Templates -> Text -> Context -> Block ->
                     Writer Warnings Text
-subsBlockWithDef t txt c = subsBlock t (Map.fromList [("",Txt txt)]:c)
+subsBlockWithDef t txt c = subsBlock t (singletonDict:c)
+  where singletonDict = Dictionary $ Map.fromList [("", Txt txt)]
 
 type Template = Text
 type Templates = Map.Map Text Template
