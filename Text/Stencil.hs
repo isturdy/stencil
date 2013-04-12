@@ -9,10 +9,10 @@ import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Writer
 import           Data.Attoparsec.Text
+import           Data.Dynamic
 import qualified Data.Map             as Map
 import           Data.Text            (Text, pack)
 import qualified Data.Text            as T
-import           Data.Typeable
 import           Prelude              hiding (concatMap)
 
 if' :: Bool -> a -> a -> a
@@ -21,22 +21,14 @@ if' False _ b = b
 
 type Dictionary = Map.Map Name Value
 
-data PolyVal = PolyVal (Typeable b => a -> Maybe b)
-
-makeVal :: Typeable a => a -> PolyVal
-makeVal a = PolyVal (\_ -> cast a)
-
-getVal :: Typeable b => PolyVal -> Maybe b
-getVal (PolyVal v) = v ()
-
 data Value = Txt Text
            | TxtFunc (Text -> Text)
-           | ValFunc (PolyVal -> Either Text Text)
+           | ValFunc (Dynamic -> Either Text Text)
            | Dict Dictionary
            | List [Text]
            | DictList [Dictionary]
-           | HVal PolyVal
-           | HValDef Text PolyVal
+           | HVal Dynamic
+           | HValDef Text Dynamic
 
 -- |Class of associative datastructures that can become dictionaries
 class ToDict a where
@@ -58,16 +50,16 @@ instance ToValue [Text] where
 -- |Arbitrary values. Not an instance due to overlapping; use these to
 -- write instances for specific types as needed.
 hValueWithDefault :: Typeable a => Text -> a -> Value
-hValueWithDefault t v = HValDef t (makeVal v)
+hValueWithDefault t v = HValDef t (toDyn v)
 
 hValue :: Typeable a => a -> Value
-hValue = HVal . makeVal
+hValue = HVal . toDyn
 
 instance ToValue (Text -> Text) where
   toValue = TxtFunc
 
 instance Typeable a => ToValue (a -> Text) where
-  toValue f = ValFunc (maybe (Left "Wrong type.") (Right . f) . getVal)
+  toValue f = ValFunc (maybe (Left "Wrong type.") (Right . f) . fromDynamic)
 
 -- |The catch-nearly-all
 instance Show a => ToValue a where
