@@ -20,10 +20,10 @@ stencilTests = testGroup "Text/Stencil" [
 parserTests = testGroup "parser" [
 
     testCase "delimiter mismatch ('<')" $
-    isParseError " <<<()>>"
+    isParseError " <()>>"
 
   , testCase "delimiter mismatch ('>')" $
-    isParseError " <<()>>>"
+    isParseError " <<()>"
 
   , testCase "delimiter mismatch (')')" $
     isParseError " <<(()>>)"
@@ -38,7 +38,17 @@ parserTests = testGroup "parser" [
     isParseError " <<(?name|text)>>"
 
   , testCase "Escaping" $
-    testTemp " ||| <<<( )>>> <<<<(( ))>>>>" " | <( )> <<(( ))>>"
+    testTemp "||| <<<( )>>> <<<<(( ))>>>> <<(?undef|| ||| )>>>)>>"
+    "| <( )> <<(( ))>>  | )>"
+
+  , testCase "Parenthesis" $
+    testTemp " <<(?undef||))>> " " ) "
+
+  , testCase "Invalid name" $
+    isParseError " <<(a t)>> "
+
+  , testCase "Template names" $
+    testTempWarn " (<<(&f a.txt)>>) " " () " "Template 'f a.txt' not found."
 
   ]
 
@@ -70,7 +80,7 @@ valueTests = testGroup "value conversion" [
 
   , testCase "Haskell value (no default)" $
     testTempWarn " <<(hval)>> " "  "
-    "'hval' refers to a value of the wrong type. Expecting text."
+    "'hval' is the wrong type: expecting text."
 
   , testCase "Haskell function" $
     testTemp " <<($hfun|hval)>> " " 2 "
@@ -83,16 +93,16 @@ valueTests = testGroup "value conversion" [
 
   ]
 
-outputTests = testGroup "output" [
+outputTests = testGroup "output and errors" [
 
     testCase "substitution (undefined)" $
-    testTempWarn  " (<<(undef)>>) " " () " "name 'undef' not in dictionary."
+    testTempWarn " (<<(undef)>>) " " () " "name 'undef' not in dictionary."
 
   , testCase "if (defined)" $
-    testTemp " <<(?text|primary|alternate)>> " " primary "
+    testTemp "<<(?text|primary <<(text)>>|alternate)>>" "primary textvalue"
 
   , testCase "if (undefined)" $
-    testTemp " <<(?undef|primary|alternate)>> " " alternate "
+    testTemp "<<(?undef|primary|alternate <<(text)>>)>>" "alternate textvalue"
 
   , testCase "list (undefined)" $
     testTempWarn " (<<(@undef||)>>) " " () " "name 'undef' not in dictionary."

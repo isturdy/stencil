@@ -207,8 +207,8 @@ warnNotFound :: Name -> Writer Warnings Text
 warnNotFound n = warn ("name '" <> n <> "' not in dictionary.")
 
 warnWrongType :: Name -> Text ->  Writer Warnings Text
-warnWrongType n t = warn ("'" <> n <> "' refers to a value of the wrong type."
-                        <> " Expecting " <> t <> ".")
+warnWrongType n t = warn ("'" <> n
+                          <> "' is the wrong type: expecting " <> t <> ".")
 
 subsBlock :: Templates -> Context -> Block -> Writer Warnings Text
 subsBlock t c (Block b) = liftM T.concat (mapM (substitute t c) b)
