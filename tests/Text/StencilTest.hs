@@ -20,10 +20,10 @@ stencilTests = testGroup "Text/Stencil" [
 parserTests = testGroup "parser" [
 
     testCase "delimiter mismatch ('<')" $
-    isParseError " <<<()>>"
+    isParseError " <()>>"
 
   , testCase "delimiter mismatch ('>')" $
-    isParseError " <<()>>>"
+    isParseError " <<()>"
 
   , testCase "delimiter mismatch (')')" $
     isParseError " <<(()>>)"
@@ -38,7 +38,11 @@ parserTests = testGroup "parser" [
     isParseError " <<(?name|text)>>"
 
   , testCase "Escaping" $
-    testTemp " ||| <<<( )>>> <<<<(( ))>>>>" " | <( )> <<(( ))>>"
+    testTemp "||| <<<( )>>> <<<<(( ))>>>> <<(?undef|| ||| )>>>)>>"
+    "| <( )> <<(( ))>>  | )>"
+
+  , testCase "Parenthesis" $
+    testTemp " <<(?undef||))>> " " ) "
 
   ]
 
@@ -70,7 +74,7 @@ valueTests = testGroup "value conversion" [
 
   , testCase "Haskell value (no default)" $
     testTempWarn " <<(hval)>> " "  "
-    "'hval' refers to a value of the wrong type. Expecting text."
+    "'hval' is the wrong type: expecting text."
 
   , testCase "Haskell function" $
     testTemp " <<($hfun|hval)>> " " 2 "
@@ -83,16 +87,66 @@ valueTests = testGroup "value conversion" [
 
   ]
 
-outputTests = testGroup "output" [
+outputTests = testGroup "output and errors" [
 
     testCase "substitution (undefined)" $
-    testTempWarn  " (<<(undef)>>) " " () " "name 'undef' not in dictionary."
+    testTempWarn " (<<(undef)>>) " " () " "name 'undef' not in dictionary."
+
+  , testCase "Name chaining (subs, first undefined)" $
+    testTempWarn " (<<(undef1.undef2)>>) " " () "
+    "name 'undef1' not in dictionary."
+
+  , testCase "Name chaining (subs, second undefined)" $
+    testTempWarn " (<<(dict.undef2)>>) " " () "
+    "name 'undef2' not in dictionary."
+
+  , testCase "Name chaining (subs, wrong type)" $
+    testTempWarn " (<<(text.undef2)>>) "  " () "
+    "'text' is the wrong type: expecting dictionary."
+
+  , testCase "Name chaining (subs, correct)" $
+    testTemp " <<(dict.dictsub)>> " " dictsubvalue "
+
+  , testCase "Name chaining (subs, deep)" $
+    testTemp " <<(dict.subdict.key)>> " " dictsubsubvalue "
 
   , testCase "if (defined)" $
-    testTemp " <<(?text|primary|alternate)>> " " primary "
+    testTemp "<<(?text|primary <<(text)>>|alternate)>>" "primary textvalue"
 
   , testCase "if (undefined)" $
-    testTemp " <<(?undef|primary|alternate)>> " " alternate "
+    testTemp "<<(?undef|primary|alternate <<(text)>>)>>" "alternate textvalue"
+
+  , testCase "Name chaining (?, first undefined)" $
+    testTemp " (<<(?undef.undef|primary|alternate)>>) " " (alternate) "
+
+  , testCase "Name chaining (?, second undefined)" $
+    testTemp " (<<(?dict.undef|primary|alternate)>>) " " (alternate) "
+
+  , testCase "Name chaining (?, defined)" $
+    testTemp " (<<(?dict.dictsub|primary|alternate)>>) " " (primary) "
+
+  , testCase "Name chaining (%, first undefined)" $
+    testTempWarn " (<<(%undef1.undef2|text)>>) " " () "
+    "name 'undef1' not in dictionary."
+
+  , testCase "Name chaining (%, second undefined)" $
+    testTempWarn " (<<(%dict.undef2|text)>>) " " () "
+    "name 'undef2' not in dictionary."
+
+  , testCase "Name chaining (%, first wrong type)" $
+    testTempWarn " (<<(%text.undef2|text)>>) " " () "
+    "'text' is the wrong type: expecting dictionary."
+
+  , testCase "Name chaining (%, second wrong type)" $
+    testTempWarn " (<<(%dict.dictsub|text)>>) " " () "
+    "'dictsub' is the wrong type: expecting dictionary."
+
+  , testCase "Name chaining (%, ref error)" $
+    testTempWarn " (<<(%dict.subdict|(<<(undef3)>>))>>) " " (()) "
+    "name 'undef3' not in dictionary."
+
+  , testCase "Name chaining (%, correct)" $
+    testTemp " (<<(%dict.subdict|<<(key)>>)>>) " " (dictsubsubvalue) "
 
   , testCase "list (undefined)" $
     testTempWarn " (<<(@undef||)>>) " " () " "name 'undef' not in dictionary."
@@ -118,8 +172,10 @@ defContext :: Context
 defContext = return . toDict $ [
     ("text"::Text, toValue ("textvalue"::Text))
   , ("string", toValue ("stringvalue"::String))
-  , ("dict", toValue $ toDict
-                       [("dictsub"::Text, textValue "dictsubvalue")])
+  , ("dict", toValue $ toDict [
+          ("dictsub"::Text, textValue "dictsubvalue")
+        , ("subdict", toValue
+                      [("key"::Text, textValue "dictsubsubvalue")])])
   , ("map", toValue . Map.fromList$
                       [("dictsub"::Text, textValue "dictsubvalue")])
   , ("alist", toValue [("dictsub"::Text, textValue"dictsubvalue")])

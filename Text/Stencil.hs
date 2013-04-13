@@ -20,10 +20,12 @@ module Text.Stencil (
 
 import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.Trans.Error
 import           Control.Monad.Writer
 import           Data.Attoparsec.Text
 import           Data.Dynamic
 import qualified Data.Map                     as Map
+import           Data.Maybe
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import           Prelude                      hiding (concatMap)
@@ -34,7 +36,7 @@ if' True  a _ = a
 if' False _ b = b
 
 -- | Maps from Text keys to 'Value'
-newtype Dictionary = Dictionary (Map.Map Name Value)
+newtype Dictionary = Dictionary (Map.Map Text Value)
 
 -- | Values used for substitutions.
 data Value = Txt Text
@@ -109,7 +111,8 @@ hValueWithDefault t v = HValDef t (toDyn v)
 newtype Block = Block [Element]
                 deriving (Show)
 
-type Name = Text
+type Name = [Text]
+type TemplateName = Text
 
 data PreEscaped = Escaped
                 | NotEscaped
@@ -122,7 +125,7 @@ data Element = ElText Text
              | ElList PreEscaped Name Block Block
              | ElVFun PreEscaped Name Name
              | ElFun  PreEscaped Name Block
-             | ElTemp PreEscaped Name
+             | ElTemp PreEscaped TemplateName
                deriving (Show)
 
 notSpecialChar :: Char -> Bool
@@ -161,47 +164,73 @@ element :: Parser Element
 element = (ElText <$> notSpecial)
           <|> tag
 
-block :: Parser Block
-block = Block <$> many' element
-
 name :: Parser Name
-name = (testChar (notInClass "?%@$!&") *> notSpecial) <|> return ""
+name = sepBy nBlock (char '.')
+  where nBlock = T.cons <$> letter <*>
+                 (T.pack <$> many' (letter <|> digit <|> char '_'
+                                    <|> char '\''))
 
-pipeBlock :: Parser Block
-pipeBlock = char '|' *> block
+templateName :: Parser TemplateName
+templateName = notSpecial <|> return ""
 
 tag :: Parser Element
 tag = string "<<(" >> do
   esc <- option Escaped (const NotEscaped <$> char '(')
   let close = if' (esc == Escaped) ")>>" "))>>"
+  let block = Block <$>
+              many' (if' (esc == NotEscaped) element
+                     (element <|> (((ElText . T.singleton) <$>
+                                    (char ')' <* testChar (/= '>'))))))
+  let pipeBlock = char '|' *> block
   ElIf esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
     <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
     <|> ElFun  esc <$> (char '!' *> name) <*> pipeBlock <* close
-    <|> ElTemp esc <$> (char '&' *> name) <* close
+    <|> ElTemp esc <$> (char '&' *> templateName) <* close
     <|> ElSubs esc <$> name <* close
 
 -- Renderer
 escapeHtml :: PreEscaped -> Text -> Text
 escapeHtml e = if' (e == NotEscaped) escape id
 
+data LookupError = NotFound [Text]
+                 | WrongType [Text]
+
+instance Error LookupError where
+  noMsg = NotFound []
+
 type Context = [Dictionary]
-lookupInContext :: Context -> Name -> Maybe Value
-lookupInContext [] _ = Nothing
-lookupInContext (Dictionary d:ds) n =
-  Map.lookup n d `mplus` lookupInContext ds n
+
+lookupEither :: Text -> (Map.Map Text b) -> Either LookupError b
+lookupEither k m = maybe (Left $ NotFound [k]) Right $ Map.lookup k m
+
+lookupInContext :: Context -> Name -> Either LookupError Value
+lookupInContext [] (n:_) = Left $ NotFound [n]
+lookupInContext (Dictionary d:_) [] = case Map.lookup "" d of
+  Just v  -> Right v
+  Nothing -> Left $ NotFound [""]
+lookupInContext (Dictionary d:ds) [n] =
+  lookupEither n d `mplus` lookupInContext ds [n]
+lookupInContext (Dictionary d:ds) (n:ns) =
+  case Map.lookup n d of
+    Just (Dict d') -> lookupInContext [d'] ns
+    Just _         -> Left $ WrongType [n]
+    Nothing        -> lookupInContext ds (n:ns)
+lookupInContext [] [] =
+  error "The impossible happened (lookupInContext fallthrough)."
 
 type Warnings = [Text]
 warn :: Text -> Writer Warnings Text
 warn t = tell [t] >> return ""
 
 warnNotFound :: Name -> Writer Warnings Text
-warnNotFound n = warn ("name '" <> n <> "' not in dictionary.")
+warnNotFound n = warn ("name '" <> T.intercalate "." n
+                       <> "' not in dictionary.")
 
 warnWrongType :: Name -> Text ->  Writer Warnings Text
-warnWrongType n t = warn ("'" <> n <> "' refers to a value of the wrong type."
-                        <> " Expecting " <> t <> ".")
+warnWrongType n t = warn ("'" <> T.intercalate "." n
+                          <> "' is the wrong type: expecting " <> t <> ".")
 
 subsBlock :: Templates -> Context -> Block -> Writer Warnings Text
 subsBlock t c (Block b) = liftM T.concat (mapM (substitute t c) b)
@@ -223,45 +252,48 @@ substitute :: Templates -> Context -> Element -> Writer Warnings Text
 substitute _ _ (ElText n) = return n
 substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (Txt t)       -> return t
-    Just (HValDef t _) -> return t
-    _                  -> warnWrongType n "text"
+    Left (NotFound n')  -> warnNotFound n'
+    Left (WrongType n') -> warnWrongType n' "dictionary"
+    Right (Txt t)       -> return t
+    Right (HValDef t _) -> return t
+    _                   -> warnWrongType n "text"
 substitute t c (ElIf e n bt bf) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> subsBlock t c bf
-    _                  -> subsBlock t c bt
+    Left (NotFound _)   -> subsBlock t c bf
+    _                   -> subsBlock t c bt
 substitute t c (ElDict e n b) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (Dict d)      -> subsBlockWithDict t d c b
-    _                  -> warnWrongType n "dictionary"
+    Right (Dict d)      -> subsBlockWithDict t d c b
+    Left (NotFound n')  -> warnNotFound n'
+    Left (WrongType n') -> warnWrongType n' "dictionary"
+    _                   -> warnWrongType [last n] "dictionary"
 substitute t c (ElList e n b bnil) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (List [])     -> subsBlock t c bnil
-    Just (List l)      -> liftM T.concat $ mapM
-                          (\txt -> subsBlockWithDef t txt c b) l
-    Just (DictList []) -> subsBlock t c bnil
-    Just (DictList l)  -> liftM T.concat $ mapM
+    Left (NotFound n')  -> warnNotFound n'
+    Right (List [])     -> subsBlock t c bnil
+    Right (List l)      -> liftM T.concat $ mapM
+                           (\txt -> subsBlockWithDef t txt c b) l
+    Right (DictList []) -> subsBlock t c bnil
+    Right (DictList l)  -> liftM T.concat $ mapM
                           (\d -> subsBlockWithDict t d c b) l
-    _                  -> warnWrongType n "list"
+    _                   -> warnWrongType n "list"
 substitute t c (ElFun e n b) = liftM (escapeHtml e) $
   case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (TxtFunc f)   -> liftM f (subsBlock t c b)
-    _                  -> warnWrongType n "text function"
+    Left (NotFound n')  -> warnNotFound n'
+    Right (TxtFunc f)   -> liftM f (subsBlock t c b)
+    _                   -> warnWrongType n "text function"
 substitute _ c (ElVFun e fn vn) = liftM (escapeHtml e) $
   case lookupInContext c fn of
-    Nothing          -> warnNotFound fn
-    Just (ValFunc f) -> case lookupInContext c vn of
-      Nothing           -> warnNotFound vn
-      Just (HVal v)     -> case f v of
-        Right t            -> return t
-        Left err           -> warn ("Function " <> fn <> "failed with error '"
+    Left (NotFound n') -> warnNotFound n'
+    Right (ValFunc f)  -> case lookupInContext c vn of
+      Left (NotFound n') -> warnNotFound n'
+      Right (HVal v)     -> case f v of
+        Right t             -> return t
+        Left err            -> warn ("Function " <> (T.intercalate "." fn)
+                                    <> "failed with error '"
                               <> err <> ".")
       _                 -> warnWrongType vn "Haskell value"
-    _                -> warnWrongType fn"Haskell function"
+    _                -> warnWrongType fn "Haskell function"
 substitute ts c (ElTemp e n) = liftM (escapeHtml e) $
   case Map.lookup n ts of
     Nothing -> warn $ "Template '" <> n <> "' not found."
