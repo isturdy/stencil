@@ -25,7 +25,7 @@ Substitute the value of *name* (which should be text or a Haskell value with a d
 
     <<(?name| text1 | text2 )>>
 
-If *name* is in the dictionary, substitute *text1*; otherwise substitute *text2*.
+If *name* is in the dictionary and is not the boolean False, substitute *text1*; otherwise substitute *text2*.
 
     <<(%name| text )>>
 

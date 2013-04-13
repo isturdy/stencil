@@ -22,12 +22,8 @@ import           Data.Attoparsec.Text
 import qualified Data.Map                     as Map
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
-import           Prelude                      hiding (concatMap)
 import           Text.XHtmlCombinators.Escape (escape)
 
-
--- | Values used for substitutions.
-           | HVal Dynamic
 import           Text.Stencil.Internal
 
 -- Syntax tree

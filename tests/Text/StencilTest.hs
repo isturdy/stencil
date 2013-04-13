@@ -105,6 +105,13 @@ outputTests = testGroup "output and errors" [
   , testCase "if (undefined)" $
     testTemp "<<(?undef|primary|alternate <<(text)>>)>>" "alternate textvalue"
 
+  , testCase "if (true)" $
+    testTemp "<<(?true|primary <<(text)>>|alternate)>>" "primary textvalue"
+
+  , testCase "if (false)" $
+    testTemp "<<(?false|primary|alternate <<(text)>>)>>" "alternate textvalue"
+
+
   , testCase "list (undefined)" $
     testTempWarn " (<<(@undef||)>>) " " () " "name 'undef' not in dictionary."
 
@@ -146,6 +153,8 @@ defContext = return . toDict $ [
   , ("nillist", toValue ([]::[Text]))
   , ("nildlist", toValue ([]::[Dictionary]))
   , ("html", textValue "<>")
+  , ("true", toValue True)
+  , ("false", toValue False)
   ]
 
 runTemp :: Template -> Either Text (Text, Warnings)
