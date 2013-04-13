@@ -37,11 +37,10 @@ if' False _ b = b
 newtype Dictionary = Dictionary (Map.Map Name Value)
 
 -- | Values used for substitutions.
-data Value = Txt Text
-           | TxtFunc (Text -> Text)
+data Value = TxtFunc (Text -> Text)
            | ValFunc (Dynamic -> Either Text Text)
            | Dict Dictionary
-           | List [Text]
+           | List [Value]
            | DictList [Dictionary]
            | HVal Dynamic
            | HValDef Text Dynamic
@@ -61,9 +60,9 @@ class ToValue a where
 
 -- | Used in substitutions ( @\<\<(name)\>\>@ ).
 instance ToValue Text where
-  toValue = Txt
+  toValue = textValue
 instance ToValue String where
-  toValue = Txt . pack
+  toValue = textValue . pack
 -- | Used in context substitutions ( @\<\<(%name|text)\>\>@ ).
 instance ToValue Dictionary where
   toValue = Dict
@@ -79,10 +78,10 @@ instance ToValue [Dictionary] where
   toValue = DictList
 -- | Lists of text; used in list substitutions.
 instance ToValue [Text] where
-  toValue = List
+  toValue = List . fmap textValue
 -- | Shortcut for @toValue . pack . show@.
 instance Show a => ToValue a where
-  toValue = Txt . pack . show
+  toValue = textValue . pack . show
 -- | Used in text function application ( @\<\<($function|text)\>\>@ ).
 instance ToValue (Text -> Text) where
   toValue = TxtFunc
@@ -92,7 +91,7 @@ instance Typeable a => ToValue (a -> Text) where
 
 -- | A convenience function for use with OverloadedStrings
 textValue :: Text -> Value
-textValue = Txt
+textValue a = HValDef a (toDyn a)
 
 -- | Arbitrary haskell values. Not an instance of 'ToValue' to prevent
 -- ambiguous instances. This can only be used as an argument to a haskell
@@ -126,6 +125,7 @@ data Element = ElText Text
              | ElTemp PreEscaped TemplateName
                deriving (Show)
 
+-- Parser
 notSpecialChar :: Char -> Bool
 notSpecialChar '<' = False
 notSpecialChar '|' = False
@@ -147,7 +147,6 @@ notSpecial = T.concat <$> many1'
              <|> T.append <$> string "))" <*> (">>" .*> takeWhile1 (== '>'))
              <|> T.singleton <$> (char ')' <* testChar (notInClass ")>")))
 
--- Parser
 parseTemp :: Text -> Either Text Block
 parseTemp t = case p t of
   Done "" r  -> Right r
@@ -217,10 +216,10 @@ subsBlockWithDict :: Templates -> Dictionary -> Context -> Block ->
                      Writer Warnings Text
 subsBlockWithDict t d c = subsBlock t (d:c)
 
-subsBlockWithDef :: Templates -> Text -> Context -> Block ->
+subsBlockWithDef :: Templates -> Value -> Context -> Block ->
                     Writer Warnings Text
 subsBlockWithDef t txt = subsBlockWithDict t singletonDict
-  where singletonDict = Dictionary $ Map.fromList [("", Txt txt)]
+  where singletonDict = Dictionary $ Map.fromList [("", txt)]
 
 type Template = Text
 -- | Maps of templates; used for include blocks ( @\<\<(&template)\>\>@ ).
@@ -231,7 +230,6 @@ substitute _ _ (ElText n) = return n
 substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
   case lookupInContext c n of
     Nothing            -> warnNotFound n
-    Just (Txt t)       -> return t
     Just (HValDef t _) -> return t
     _                  -> warnWrongType n "text"
 substitute t c (ElIf e n bt bf) = liftM (escapeHtml e) $
