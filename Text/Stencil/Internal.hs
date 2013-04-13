@@ -25,6 +25,7 @@ data Value = TxtFunc (Text -> Text)
            | DictList [Dictionary]
            | HVal Dynamic
            | HValDef Text Dynamic
+           | HBool Bool
 
 -- | Class of associative datastructures that can become dictionaries.
 class ToDict a where
@@ -69,6 +70,9 @@ instance ToValue (Text -> Text) where
 -- | Used in haskell function application ( @\<\<(!function|value)\>\>@ ).
 instance Typeable a => ToValue (a -> Text) where
   toValue f = ValFunc (maybe (Left "Wrong type.") (Right . f) . fromDynamic)
+-- | Used in conditionals
+instance ToValue Bool where
+  toValue = HBool
 
 -- | A convenience function for use with OverloadedStrings
 textValue :: Text -> Value

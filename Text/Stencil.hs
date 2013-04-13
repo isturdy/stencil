@@ -160,6 +160,7 @@ substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
 substitute t c (ElIf e n bt bf) = liftM (escapeHtml e) $
   case lookupInContext c n of
     Nothing            -> subsBlock t c bf
+    Just (HBool False) -> subsBlock t c bf
     _                  -> subsBlock t c bt
 substitute t c (ElDict e n b) = liftM (escapeHtml e) $
   case lookupInContext c n of
