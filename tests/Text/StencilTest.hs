@@ -10,6 +10,7 @@ import qualified Data.Map                       as Map
 import           Data.Text
 
 import           Text.Stencil
+import           Text.Stencil.Internal
 
 stencilTests = testGroup "Text/Stencil" [
     parserTests
