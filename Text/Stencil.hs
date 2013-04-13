@@ -110,6 +110,7 @@ newtype Block = Block [Element]
                 deriving (Show)
 
 type Name = Text
+type TemplateName = Text
 
 data PreEscaped = Escaped
                 | NotEscaped
@@ -122,7 +123,7 @@ data Element = ElText Text
              | ElList PreEscaped Name Block Block
              | ElVFun PreEscaped Name Name
              | ElFun  PreEscaped Name Block
-             | ElTemp PreEscaped Name
+             | ElTemp PreEscaped TemplateName
                deriving (Show)
 
 notSpecialChar :: Char -> Bool
@@ -162,8 +163,14 @@ element = (ElText <$> notSpecial)
           <|> tag
 
 name :: Parser Name
-name = (testChar (notInClass "?%@$!&") *> notSpecial) <|> return ""
+name = testChar (notInClass "?%@$!&") *> (T.cons <$> letter <*>
+                 (T.pack <$> many' (letter <|> digit <|> char '_'
+                                    <|> char '\''))
+                 <|> return "")
 
+
+templateName :: Parser TemplateName
+templateName = notSpecial <|> return ""
 
 tag :: Parser Element
 tag = string "<<(" >> do
@@ -179,7 +186,7 @@ tag = string "<<(" >> do
     <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
     <|> ElFun  esc <$> (char '!' *> name) <*> pipeBlock <* close
-    <|> ElTemp esc <$> (char '&' *> name) <* close
+    <|> ElTemp esc <$> (char '&' *> templateName) <* close
     <|> ElSubs esc <$> name <* close
 
 -- Renderer
