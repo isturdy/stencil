@@ -14,7 +14,7 @@ Reserved characters and escaping
 
 In all contexts, Stencil reserves doubled and tripled angle brackets with an internal parenthesis ('<<(', ')>>') and pipes ('|'). If any of these are needed within the text, add one angle bracket or two pipes, as appropriate: '<<<(' becomes '<<(', '|||' '|', '|||| '||', and so on. For simplicity, these should be escaped everywhere, not merely where syntactically significant.
 
-For disambiguation, variable names may not begin with '?', '%', '@', '!', '$', '&', and pipes and angle bracket-parenthesis sequences must be escaped.
+Variable names must start with a letter and otherwise contain only letters, numbers, underscores, and apostrophes.
 
 Substitutions
 -------------
