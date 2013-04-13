@@ -161,19 +161,19 @@ element :: Parser Element
 element = (ElText <$> notSpecial)
           <|> tag
 
-block :: Parser Block
-block = Block <$> many' element
-
 name :: Parser Name
 name = (testChar (notInClass "?%@$!&") *> notSpecial) <|> return ""
 
-pipeBlock :: Parser Block
-pipeBlock = char '|' *> block
 
 tag :: Parser Element
 tag = string "<<(" >> do
   esc <- option Escaped (const NotEscaped <$> char '(')
   let close = if' (esc == Escaped) ")>>" "))>>"
+  let block = Block <$>
+              many' (if' (esc == NotEscaped) element
+                     (element <|> (((ElText . T.singleton) <$>
+                                    (char ')' <* testChar (/= '>'))))))
+  let pipeBlock = char '|' *> block
   ElIf esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
     <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
     <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
