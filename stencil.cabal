@@ -17,7 +17,6 @@ library
   exposed-modules:
     Text.Stencil
     Text.Stencil.Internal
-    Text.Stencil.Generics
   GHC-Options:
     -Wall
 
