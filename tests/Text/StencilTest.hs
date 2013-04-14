@@ -83,6 +83,9 @@ valueTests = testGroup "value conversion" [
     testTempWarn " <<(hval)>> " "  "
     "'hval' is the wrong type: expecting text."
 
+  , testCase "Haskell value (show default)" $
+    testTemp " <<(hvalshow)>> " " 1.2 "
+
   , testCase "Haskell function" $
     testTemp " <<($hfun|hval)>> " " 2 "
 
@@ -145,8 +148,9 @@ defContext = return . toDict $ [
                     [[("dictsub"::Text, textValue "dictsubvalue1")]
                     , [("dictsub"::Text, textValue "dictsubvalue2")]])
   , ("tlist", toValue ["textsubvalue1"::Text, "textsubvalue2"])
-  , ("hval", hValue (1::Int))
-  , ("hvaldef", hValueWithDefault "(def 1)" (1::Int))
+  , ("hval", hVal (1::Int))
+  , ("hvaldef", hValDef "(def 1)" (1::Int))
+  , ("hvalshow", hValShow (1.2::Float))
   , ("hfun", toValue (pack . show . (+(1::Int))))
   , ("tfun", toValue toUpper)
   , ("showable", toValue (2::Int))

@@ -61,6 +61,8 @@ instance ToValue [Dictionary] where
 -- | Lists of text; used in list substitutions.
 instance ToValue [Text] where
   toValue = List . fmap textValue
+instance ToValue [Value] where
+  toValue = List
 -- | Shortcut for @toValue . pack . show@.
 instance Show a => ToValue a where
   toValue = textValue . pack . show
@@ -81,10 +83,13 @@ textValue a = HValDef a (toDyn a)
 -- | Arbitrary haskell values. Not an instance of 'ToValue' to prevent
 -- ambiguous instances. This can only be used as an argument to a haskell
 -- function block ( @\<\<(!function|value)\>\>@ ).
-hValue :: Typeable a => a -> Value
-hValue = HVal . toDyn
+hVal :: Typeable a => a -> Value
+hVal = HVal . toDyn
 
 -- | Arbitrary value with a default textual representation; can be used
 -- in substitution, list, and both types of function blocks.
-hValueWithDefault :: Typeable a => Text -> a -> Value
-hValueWithDefault t v = HValDef t (toDyn v)
+hValDef :: Typeable a => Text -> a -> Value
+hValDef t v = HValDef t (toDyn v)
+
+hValShow :: (Show a, Typeable a) => a -> Value
+hValShow a = hValDef (pack $ show a) a

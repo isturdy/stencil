@@ -5,8 +5,9 @@ module Text.Stencil (
        , Value()
        , ToValue( toValue )
        , textValue
-       , hValue
-       , hValueWithDefault
+       , hVal
+       , hValDef
+       , hValShow
        , Dictionary
        , ToDict( toDict )
        , Context
