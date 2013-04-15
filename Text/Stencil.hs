@@ -70,14 +70,11 @@ notSpecial = T.concat <$> many1'
              <|> T.singleton <$> (char ')' <* testChar (notInClass ")>")))
 
 parseTemp :: Text -> Either Text Block
-parseTemp t = case p t of
+parseTemp t = case feed (parse (Block <$> many' element) t) "" of
   Done "" r  -> Right r
   Done tx _  -> Left $ "Parse error at " <> tx
   Fail _ _ e -> Left $ pack e
-  Partial _  -> error "This is impossible (parser failed to complete."
-  where p txt = case parse (Block <$> many' element) txt of
-          Partial f -> f ""
-          x         -> x
+  Partial _  -> error "This is impossible (parser failed to complete)."
 
 element :: Parser Element
 element = (ElText <$> notSpecial)
