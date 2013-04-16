@@ -68,6 +68,7 @@ notSpecial = T.concat <$> many1'
              <|> T.cons <$> char ')' <*> (">>" .*> takeWhile1 (== '>'))
              <|> T.append <$> string "))" <*> (">>" .*> takeWhile1 (== '>'))
              <|> T.singleton <$> (char ')' <* testChar (notInClass ")>")))
+             <|> T.singleton <$> (char '<' <* testChar (/= '<'))
 
 parseTemp :: Text -> Either Text Block
 parseTemp t = case feed (parse (Block <$> many' element) t) "" of
