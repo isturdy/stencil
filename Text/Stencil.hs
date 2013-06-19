@@ -24,6 +24,7 @@ import qualified Data.Map                     as Map
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import           Text.XHtmlCombinators.Escape (escape)
+import           Control.Monad.RWS.Strict
 
 import           Text.Stencil.Internal
 
@@ -32,6 +33,9 @@ newtype Block = Block [Element]
                 deriving (Show)
 
 type TemplateName = Text
+
+type State = (Templates, Context)
+type RWT = RWS State Warnings ()
 
 data PreEscaped = Escaped
                 | NotEscaped
@@ -70,16 +74,15 @@ notSpecial = T.concat <$> many1'
              <|> T.singleton <$> (char ')' <* testChar (notInClass ")>")))
              <|> T.singleton <$> (char '<' <* testChar (/= '<'))
 
-parseTemp :: Text -> Either Text Block
-parseTemp t = case feed (parse (Block <$> many' element) t) "" of
+parseTemp :: Text -> Either Text Text
+parseTemp t = case feed (parse (T.concat <$> many' element) t) "" of
   Done "" r  -> Right r
   Done tx _  -> Left $ "Parse error at " <> tx
   Fail _ _ e -> Left $ pack e
   Partial _  -> error "This is impossible (parser failed to complete)."
 
-element :: Parser Element
-element = (ElText <$> notSpecial)
-          <|> tag
+element :: Parser Text
+element = notSpecial <|> tag
 
 name :: Parser Name
 name = testChar (notInClass "?%@$!&") *> (T.cons <$> letter <*>
@@ -87,26 +90,25 @@ name = testChar (notInClass "?%@$!&") *> (T.cons <$> letter <*>
                                     <|> char '\''))
                  <|> return "")
 
-
 templateName :: Parser TemplateName
 templateName = notSpecial <|> return ""
 
-tag :: Parser Element
-tag = string "<<(" >> do
-  esc <- option Escaped (const NotEscaped <$> char '(')
+tag :: RWT (Parser Text)
+tag = liftM (string "<<(") >> do
+  esc <- liftM (option Escaped (const NotEscaped <$> char '('))
   let close = if' (esc == Escaped) ")>>" "))>>"
-  let block = Block <$>
+  let block = T.concat <$>
               many' (if' (esc == NotEscaped) element
                      (element <|> (((ElText . T.singleton) <$>
                                     (char ')' <* testChar (/= '>'))))))
   let pipeBlock = char '|' *> block
-  ElIf esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
-    <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
-    <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
-    <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
-    <|> ElFun  esc <$> (char '!' *> name) <*> pipeBlock <* close
-    <|> ElTemp esc <$> (char '&' *> templateName) <* close
-    <|> ElSubs esc <$> name <* close
+  subsIf esc <$> (char '?' *> name) <*> pipeBlock <*> pipeBlock <* close
+    -- <|> ElDict esc <$> (char '%' *> name) <*> pipeBlock <* close
+    -- <|> ElList esc <$> (char '@' *> name) <*> pipeBlock <*> pipeBlock <* close
+    -- <|> ElVFun esc <$> (char '$' *> name) <*> (char '|' *> name)  <* close
+    -- <|> ElFun  esc <$> (char '!' *> name) <*> pipeBlock <* close
+    -- <|> ElTemp esc <$> (char '&' *> templateName) <* close
+    -- <|> ElSubs esc <$> name <* close
 
 -- Renderer
 escapeHtml :: PreEscaped -> Text -> Text
@@ -129,7 +131,8 @@ warnWrongType :: Name -> Text ->  Writer Warnings Text
 warnWrongType n t = warn ("'" <> n
                           <> "' is the wrong type: expecting " <> t <> ".")
 
-subsBlock :: Templates -> Context -> Block -> Writer Warnings Text
+subsBlock :: RWT
+  Templates -> Context -> Block -> Writer Warnings Text
 subsBlock t c (Block b) = liftM T.concat (mapM (substitute t c) b)
 
 subsBlockWithDict :: Templates -> Dictionary -> Context -> Block ->
@@ -145,55 +148,58 @@ type Template = Text
 -- | Maps of templates; used for include blocks ( @\<\<(&template)\>\>@ ).
 type Templates = Map.Map Text Template
 
-substitute :: Templates -> Context -> Element -> Writer Warnings Text
-substitute _ _ (ElText n) = return n
-substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
-  case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (HValDef t _) -> return t
-    _                  -> warnWrongType n "text"
-substitute t c (ElIf e n bt bf) = liftM (escapeHtml e) $
-  case lookupInContext c n of
-    Nothing            -> subsBlock t c bf
-    Just (HBool False) -> subsBlock t c bf
-    _                  -> subsBlock t c bt
-substitute t c (ElDict e n b) = liftM (escapeHtml e) $
-  case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (Dict d)      -> subsBlockWithDict t d c b
-    _                  -> warnWrongType n "dictionary"
-substitute t c (ElList e n b bnil) = liftM (escapeHtml e) $
-  case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (List [])     -> subsBlock t c bnil
-    Just (List l)      -> liftM T.concat $ mapM
-                          (\txt -> subsBlockWithDef t txt c b) l
-    Just (DictList []) -> subsBlock t c bnil
-    Just (DictList l)  -> liftM T.concat $ mapM
-                          (\d -> subsBlockWithDict t d c b) l
-    _                  -> warnWrongType n "list"
-substitute t c (ElFun e n b) = liftM (escapeHtml e) $
-  case lookupInContext c n of
-    Nothing            -> warnNotFound n
-    Just (TxtFunc f)   -> liftM f (subsBlock t c b)
-    _                  -> warnWrongType n "text function"
-substitute _ c (ElVFun e fn vn) = liftM (escapeHtml e) $
-  case lookupInContext c fn of
-    Nothing          -> warnNotFound fn
-    Just (ValFunc f) -> case lookupInContext c vn of
-      Nothing           -> warnNotFound vn
-      Just (HVal v)     -> case f v of
-        Right t            -> return t
-        Left err           -> warn ("Function " <> fn <> "failed with error '"
-                              <> err <> ".")
-      _                 -> warnWrongType vn "Haskell value"
-    _                -> warnWrongType fn"Haskell function"
-substitute ts c (ElTemp e n) = liftM (escapeHtml e) $
-  case Map.lookup n ts of
-    Nothing -> warn $ "Template '" <> n <> "' not found."
-    Just t  -> case evalTemplate ts c t of
-      Left err        -> warn err
-      Right (txt, ws) -> mapM_ warn ws >> return txt
+-- substitute :: Templates -> Context -> Element -> Writer Warnings Text
+-- substitute _ _ (ElText n) = return n
+-- substitute _ c (ElSubs e n) = liftM (escapeHtml e) $
+--   case lookupInContext c n of
+--     Nothing            -> warnNotFound n
+--     Just (HValDef t _) -> return t
+--     _                  -> warnWrongType n "text"
+--subsIf :: RWT
+subsIf e n bt bf = do
+  (t, c) <- ask
+  return . liftM (escapeHtml e) $
+    case lookupInContext c n of
+      Nothing            -> subsBlock t c bf
+      Just (HBool False) -> subsBlock t c bf
+      _                  -> subsBlock t c bt
+-- substitute t c (ElDict e n b) = liftM (escapeHtml e) $
+--   case lookupInContext c n of
+--     Nothing            -> warnNotFound n
+--     Just (Dict d)      -> subsBlockWithDict t d c b
+--     _                  -> warnWrongType n "dictionary"
+-- substitute t c (ElList e n b bnil) = liftM (escapeHtml e) $
+--   case lookupInContext c n of
+--     Nothing            -> warnNotFound n
+--     Just (List [])     -> subsBlock t c bnil
+--     Just (List l)      -> liftM T.concat $ mapM
+--                           (\txt -> subsBlockWithDef t txt c b) l
+--     Just (DictList []) -> subsBlock t c bnil
+--     Just (DictList l)  -> liftM T.concat $ mapM
+--                           (\d -> subsBlockWithDict t d c b) l
+--     _                  -> warnWrongType n "list"
+-- substitute t c (ElFun e n b) = liftM (escapeHtml e) $
+--   case lookupInContext c n of
+--     Nothing            -> warnNotFound n
+--     Just (TxtFunc f)   -> liftM f (subsBlock t c b)
+--     _                  -> warnWrongType n "text function"
+-- substitute _ c (ElVFun e fn vn) = liftM (escapeHtml e) $
+--   case lookupInContext c fn of
+--     Nothing          -> warnNotFound fn
+--     Just (ValFunc f) -> case lookupInContext c vn of
+--       Nothing           -> warnNotFound vn
+--       Just (HVal v)     -> case f v of
+--         Right t            -> return t
+--         Left err           -> warn ("Function " <> fn <> "failed with error '"
+--                               <> err <> ".")
+--       _                 -> warnWrongType vn "Haskell value"
+--     _                -> warnWrongType fn"Haskell function"
+-- substitute ts c (ElTemp e n) = liftM (escapeHtml e) $
+--   case Map.lookup n ts of
+--     Nothing -> warn $ "Template '" <> n <> "' not found."
+--     Just t  -> case evalTemplate ts c t of
+--       Left err        -> warn err
+--       Right (txt, ws) -> mapM_ warn ws >> return txt
 
 -- | Evaluates templates. Returns @'Left' 'Text'@ if it cannot parse the
 -- template, and @'Right' ('Text', 'Warnings')@ if it can. If it encounters
